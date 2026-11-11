@@ -82,7 +82,7 @@ export default function Navbar({
             >
               Dashboard
             </button>
-            <button type="button" onClick={onLogout} className="btn-nav-login">
+            <button type="button" onClick={onLogout} className="btn-nav-login navbar-logout-action">
               Log out
             </button>
           </>

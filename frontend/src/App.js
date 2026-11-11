@@ -10,9 +10,40 @@ const Login = lazy(() => import('./pages/Login.js'));
 const Register = lazy(() => import('./pages/Register.js'));
 const AdminPortal = lazy(() => import('./pages/AdminPortal.js'));
 const TravellerDashboard = lazy(() => import('./pages/TravellerDashboard.js'));
-const BusinessDashboard = lazy(() => import('./pages/BusinessDashboard.js'));
+const BusinessDashboard = lazy(() => import('./pages/BusinessDashboard.jsx'));
 
 let sessionRestoreRequest;
+
+class ViewErrorBoundary extends React.Component {
+  state = { error: null };
+
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error(`The ${this.props.view} page failed to render.`, error, errorInfo);
+  }
+
+  render() {
+    const { error } = this.state;
+    if (error) {
+      return (
+        <section className="view-error" role="alert">
+          <h1>This page couldn’t load</h1>
+          <p>{error.message || 'An unexpected error occurred while opening this page.'}</p>
+          {import.meta.env.DEV && error.stack && (
+            <details>
+              <summary>Technical details</summary>
+              <pre className="view-error__stack">{error.stack}</pre>
+            </details>
+          )}
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function dashboardFor(user) {
   if (user?.role === 'Admin') return 'admin';
@@ -142,15 +173,17 @@ export default function App() {
       )}
 
       {/* Single Page Application View Container (Cross-fades smoothly inside same viewport) */}
-      <main className="app-main" id="main-content">
+      <main className={`app-main${currentView === 'home' ? ' app-main--home' : ''}`} id="main-content">
         {authError && <p className="app-auth-error" role="alert">{authError}</p>}
         <div
           className={`view-container ${isTransitioning ? 'fade-out' : 'fade-in'}`}
           key={currentView}
         >
-          <Suspense fallback={<div className="view-loading" role="status">Loading page...</div>}>
-            {renderCurrentView()}
-          </Suspense>
+          <ViewErrorBoundary view={currentView}>
+            <Suspense fallback={<div className="view-loading" role="status">Loading page...</div>}>
+              {renderCurrentView()}
+            </Suspense>
+          </ViewErrorBoundary>
         </div>
       </main>
     </div>

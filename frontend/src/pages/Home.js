@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowRight } from 'lucide-react';
+import Button from '../components/Button.js';
 
 export default function Home({ onNavigate }) {
   return (
@@ -22,7 +23,7 @@ export default function Home({ onNavigate }) {
         {/* Left-aligned hero content */}
         <div className="hero-content">
           <div className="hero-kicker">
-            <span style={{ width: 14, height: 2, backgroundColor: 'var(--peach)', display: 'inline-block' }} />
+            <span className="hero-kicker-mark" aria-hidden="true" />
             <span>Rural Discovery & Collaborative Journeys</span>
           </div>
 
@@ -38,22 +39,20 @@ export default function Home({ onNavigate }) {
           </p>
 
           <div className="hero-actions">
-            <button
-              type="button"
+            <Button
               onClick={() => onNavigate('register')}
-              className="btn-primary-journey"
+              variant="primary"
+              icon={<ArrowRight size={15} />}
             >
-              <span>Plan Your Journey</span>
-              <ArrowRight size={15} />
-            </button>
+              Plan Your Journey
+            </Button>
 
-            <button
-              type="button"
+            <Button
               onClick={() => onNavigate('about')}
-              className="btn-secondary-rural"
+              variant="hero-secondary"
             >
               Explore Rural Experiences
-            </button>
+            </Button>
           </div>
         </div>
       </section>

@@ -93,13 +93,24 @@ export default function AdminPortal({ adminUser, onLogout, theme, onToggleTheme 
           ))}
         </nav>
         <div className="admin-sidebar-bottom">
-          <div className="admin-sidebar-user">
-            <span className="admin-avatar">{avatar}</span>
-            <span><strong>{adminUser?.name || 'Administrator'}</strong><small>Administrator</small></span>
-          </div>
           <button type="button" className="admin-sidebar-logout" onClick={onLogout}>
             <LogOut size={17} aria-hidden="true" /><span>Logout</span>
           </button>
+          <svg className="admin-sidebar-illustration" viewBox="0 0 280 120" role="img" aria-label="Admin reviewing business records and approvals">
+            <g fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 108h256" />
+              <rect x="30" y="54" width="72" height="52" rx="5" />
+              <path d="M43 69h45M43 80h34M43 91h39" />
+              <path d="M54 54V43h23v11" />
+              <rect x="118" y="36" width="76" height="70" rx="5" />
+              <path d="M132 52h46m-46 12h26m-26 12h23" />
+              <circle cx="166" cy="82" r="10" />
+              <path d="m161 82 4 4 7-8" />
+              <path d="M216 53h38v53h-38zM226 64h18m-18 10h18m-18 10h10" />
+              <path d="m233 92 5 5 10-12" />
+              <path d="M18 42h20m-10-10v20M250 32h16m-8-8v16" />
+            </g>
+          </svg>
         </div>
       </aside>
 
@@ -153,7 +164,7 @@ export default function AdminPortal({ adminUser, onLogout, theme, onToggleTheme 
                 <div className="admin-profile-dropdown">
                   <button type="button" onClick={() => navigate('My Profile')}>My Profile</button>
                   <button type="button" onClick={() => navigate('Settings')}>Settings</button>
-                  <button type="button" onClick={onLogout}>Logout</button>
+                  <button type="button" className="admin-logout-action" onClick={onLogout}>Logout</button>
                 </div>
               )}
             </div>

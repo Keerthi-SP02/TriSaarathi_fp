@@ -1,11 +1,15 @@
+import { logProviderFailure, providerRetryDelay, shouldServeCachedResult } from './discoveryFallback.js';
+
 const cache = new Map();
-const CACHE_TTL_MS = 15 * 60 * 1000;
+const STALE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 7000;
-const OVERPASS_TIMEOUT_MS = 2500;
+const OVERPASS_TIMEOUT_MS = 7000;
 const MAX_DESTINATIONS = 20;
 const NOMINATIM_MIN_INTERVAL_MS = 1100;
 let nominatimQueue = Promise.resolve();
 let nextNominatimRequestAt = 0;
+const providerBackoff = new Map();
+const nominatimAreaCache = new Map();
 const genericPlaceNames = new Set([
   'waterfall',
   'lake',
@@ -29,11 +33,29 @@ const genericImageTokens = new Set([
 
 const categories = {
   all: [
-    'nwr({scope})["tourism"~"attraction|museum|guest_house|hostel|camp_site|viewpoint|artwork"]["name"];',
+    'nwr({scope})["tourism"~"attraction|museum|guest_house|hostel|camp_site|viewpoint|artwork|alpine_hut"]["name"];',
     'nwr({scope})["historic"]["name"];',
     'nwr({scope})["natural"~"waterfall|lake|peak|hot_spring"]["name"];',
     'nwr({scope})["craft"]["name"];',
-    'nwr({scope})["amenity"~"place_of_worship|restaurant|marketplace"]["name"];',
+    'nwr({scope})["amenity"~"place_of_worship|restaurant|marketplace|cafe|food_court"]["name"];',
+    'nwr({scope})["shop"~"art|craft|farm|local|food|pottery"]["name"];',
+    'nwr({scope})["landuse"="farm"]["name"];',
+    'nwr({scope})["tourism"="farm"]["name"];',
+  ],
+  businesses: [
+    'nwr({scope})["amenity"~"restaurant|marketplace|cafe|food_court"]["name"];',
+    'nwr({scope})["shop"]["name"];',
+    'nwr({scope})["craft"]["name"];',
+    'nwr({scope})["tourism"~"guest_house|hostel|camp_site"]["name"];',
+  ],
+  homestays: [
+    'nwr({scope})["tourism"~"guest_house|hostel|camp_site|chalet"]["name"];',
+    'nwr({scope})["accommodation"]["name"];',
+  ],
+  experiences: [
+    'nwr({scope})["tourism"~"attraction|museum|viewpoint|artwork|camp_site"]["name"];',
+    'nwr({scope})["historic"]["name"];',
+    'nwr({scope})["natural"~"waterfall|lake|peak|hot_spring"]["name"];',
   ],
   nature: [
     'nwr({scope})["tourism"~"viewpoint|camp_site"]["name"];',
@@ -44,7 +66,8 @@ const categories = {
     'nwr({scope})["historic"]["name"];',
   ],
   food: [
-    'nwr({scope})["amenity"="restaurant"]["name"];',
+    'nwr({scope})["amenity"~"restaurant|cafe|food_court"]["name"];',
+    'nwr({scope})["shop"~"bakery|food"]["name"];',
   ],
   worship: [
     'nwr({scope})["amenity"="place_of_worship"]["name"];',
@@ -52,6 +75,18 @@ const categories = {
   market: [
     'nwr({scope})["craft"]["name"];',
     'nwr({scope})["amenity"="marketplace"]["name"];',
+    'nwr({scope})["shop"~"art|craft|pottery"]["name"];',
+  ],
+  craft: [
+    'nwr({scope})["craft"]["name"];',
+    'nwr({scope})["shop"~"art|craft|pottery"]["name"];',
+    'nwr({scope})["amenity"="marketplace"]["name"];',
+  ],
+  farms: [
+    'nwr({scope})["tourism"="farm"]["name"];',
+    'nwr({scope})["landuse"="farm"]["name"];',
+    'nwr({scope})["shop"="farm"]["name"];',
+    'nwr({scope})["craft"="pottery"]["name"];',
   ],
 };
 
@@ -62,11 +97,16 @@ const requestHeaders = {
 
 const nominatimTerms = {
   all: ['waterfall', 'temple', 'market'],
+  businesses: ['restaurant', 'market', 'handicraft'],
+  homestays: [],
+  experiences: ['waterfall', 'historic site', 'viewpoint'],
   nature: ['waterfall', 'lake', 'viewpoint'],
   heritage: ['temple', 'historic site'],
   food: ['restaurant'],
   worship: ['temple'],
   market: ['market', 'handicraft'],
+  craft: ['market', 'handicraft'],
+  farms: [],
 };
 
 const relevantNominatimTypes = {
@@ -76,6 +116,7 @@ const relevantNominatimTypes = {
   viewpoint: new Set(['viewpoint']),
   village: new Set(['village', 'hamlet', 'isolated_dwelling']),
   market: new Set(['market', 'marketplace']),
+  'guest house': new Set(['guest_house', 'hostel', 'camp_site']),
   handicraft: new Set(['handicraft', 'craft']),
   restaurant: new Set(['restaurant', 'cafe', 'food_court']),
   'historic site': new Set(['archaeological_site', 'castle', 'fort', 'historic_site', 'monument', 'ruins']),
@@ -85,6 +126,16 @@ function getCached(key) {
   const entry = cache.get(key);
   if (!entry) return null;
   if (entry.expiresAt <= Date.now()) {
+    if (entry.staleUntil <= Date.now()) cache.delete(key);
+    return null;
+  }
+  return entry.value;
+}
+
+function getStaleCached(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (entry.staleUntil <= Date.now()) {
     cache.delete(key);
     return null;
   }
@@ -92,12 +143,31 @@ function getCached(key) {
 }
 
 function setCached(key, value) {
-  if (cache.size > 100) {
+  if (cache.size >= 100 && !cache.has(key)) {
     for (const [cachedKey, entry] of cache) {
       if (entry.expiresAt <= Date.now()) cache.delete(cachedKey);
     }
+    while (cache.size >= 100) cache.delete(cache.keys().next().value);
   }
-  cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS });
+  cache.set(key, { value, expiresAt: Date.now() + cacheTtlMs(), staleUntil: Date.now() + STALE_CACHE_TTL_MS });
+}
+
+function cacheTtlMs() {
+  return Math.max(60_000, Number(process.env.DISCOVERY_CACHE_TTL_MS) || 15 * 60 * 1000);
+}
+
+function retryWait(provider) {
+  const entry = providerBackoff.get(provider);
+  return entry && entry.retryAt > Date.now() ? entry.retryAt - Date.now() : 0;
+}
+
+function markProviderSuccess(provider) { providerBackoff.delete(provider); }
+
+function markProviderFailure(provider, error, cachedUsed = false) {
+  const previous = providerBackoff.get(provider);
+  const attempt = (previous?.attempt || 0) + 1;
+  providerBackoff.set(provider, { attempt, retryAt: Date.now() + providerRetryDelay(error?.status || 0, attempt) });
+  logProviderFailure(provider, error, cachedUsed);
 }
 
 async function fetchJson(url, options = {}) {
@@ -111,7 +181,9 @@ async function fetchJson(url, options = {}) {
       headers: { ...requestHeaders, ...options.headers },
     });
     if (!response.ok) {
-      throw new Error(`Upstream service returned HTTP ${response.status}.`);
+      const error = new Error(`Upstream service returned HTTP ${response.status}.`);
+      error.status = response.status;
+      throw error;
     }
     return await response.json();
   } finally {
@@ -132,9 +204,49 @@ function fetchNominatimJson(url) {
   return request;
 }
 
+export async function findNominatimArea(query) {
+  const areaName = typeof query === 'string' ? query.trim().replace(/\s+/g, ' ').slice(0, 100) : '';
+  if (areaName.length < 2) throw new Error('Enter a village, town, or district name.');
+  const cacheKey = areaName.toLocaleLowerCase();
+  const cached = nominatimAreaCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const params = new URLSearchParams({
+    format: 'jsonv2',
+    addressdetails: '1',
+    limit: '5',
+    countrycodes: 'in',
+    q: `${areaName}, Andhra Pradesh, India`,
+  });
+  const retryDelay = retryWait('Nominatim');
+  if (retryDelay) throw new Error(`OpenStreetMap search is cooling down after an upstream error. Try again in ${Math.ceil(retryDelay / 1000)} seconds.`);
+  try {
+    const records = await fetchNominatimJson(`https://nominatim.openstreetmap.org/search?${params}`);
+    markProviderSuccess('Nominatim');
+    if (nominatimAreaCache.size >= 100 && !nominatimAreaCache.has(cacheKey)) {
+      nominatimAreaCache.delete(nominatimAreaCache.keys().next().value);
+    }
+    const match = records.find((record) => record.address?.country_code === 'in' && /andhra pradesh/i.test(record.address?.state || ''));
+    if (!match) {
+      nominatimAreaCache.set(cacheKey, { value: null, expiresAt: Date.now() + cacheTtlMs() });
+      return null;
+    }
+    const value = { latitude: Number(match.lat), longitude: Number(match.lon), displayName: match.display_name || areaName };
+    if (!Number.isFinite(value.latitude) || !Number.isFinite(value.longitude)) return null;
+    nominatimAreaCache.set(cacheKey, { value, expiresAt: Date.now() + cacheTtlMs() });
+    return value;
+  } catch (error) {
+    markProviderFailure('Nominatim', error);
+    throw new Error('OpenStreetMap could not find that Andhra Pradesh location right now. Try again later.');
+  }
+}
+
 function categoryFor(tags) {
   if (tags.amenity === 'place_of_worship') return 'Heritage & worship';
   if (tags.amenity === 'restaurant') return 'Food';
+  if (['cafe', 'food_court'].includes(tags.amenity) || tags.shop === 'food') return 'Food';
+  if (tags.shop === 'farm' || tags.tourism === 'farm' || tags.landuse === 'farm') return 'Farm experiences';
+  if (tags.shop === 'pottery' || tags.craft === 'pottery') return 'Pottery & crafts';
+  if (tags.shop) return 'Local shops & artisans';
   if (tags.amenity === 'marketplace' || tags.craft) return 'Markets & crafts';
   if (tags.historic || tags.tourism === 'museum') return 'Heritage';
   if (tags.natural || tags.tourism === 'viewpoint') return 'Nature & viewpoints';
@@ -227,15 +339,15 @@ async function mapConcurrent(items, concurrency, callback) {
 
 function buildOverpassQuery({ category, latitude, longitude, radius, limit }) {
   const scope = latitude === undefined
-    ? 'area.india'
+    ? 'area.andhra_pradesh'
     : `around:${radius},${latitude},${longitude}`;
   const statements = (categories[category] || categories.all)
     .map((statement) => statement.replaceAll('{scope}', scope))
     .join('\n  ');
   const area = latitude === undefined
-    ? 'area["ISO3166-1"="IN"]["admin_level"="2"]->.india;'
+    ? 'area["ISO3166-2"="IN-AP"]["admin_level"="4"]->.andhra_pradesh;'
     : '';
-  return `[out:json][timeout:3];\n${area}\n(\n  ${statements}\n);\nout center tags ${limit};`;
+  return `[out:json][timeout:6];\n${area}\n(\n  ${statements}\n);\nout center tags ${limit};`;
 }
 
 function normalizeOsmElement(element) {
@@ -252,6 +364,7 @@ function normalizeOsmElement(element) {
     latitude,
     longitude,
     description: tags['description:en'] || tags.description || '',
+    address: [tags['addr:housenumber'], tags['addr:street'], tags['addr:place'], tags['addr:city'], tags['addr:state']].filter(Boolean).join(', '),
     website: tags.website || tags['contact:website'] || '',
     phone: tags.phone || tags['contact:phone'] || '',
     openingHours: tags.opening_hours || '',
@@ -262,6 +375,8 @@ function normalizeOsmElement(element) {
       natural: tags.natural || '',
       amenity: tags.amenity || '',
       craft: tags.craft || '',
+      shop: tags.shop || '',
+      landuse: tags.landuse || '',
     },
   };
 }
@@ -281,6 +396,7 @@ function normalizeNominatimPlace(record, searchTerm) {
   if (
     !record.name ||
     address.country_code !== 'in' ||
+    !/andhra pradesh/i.test(address.state || '') ||
     !allowedTypes?.has(type) ||
     genericPlaceNames.has(normalizedName) ||
     (address.city && !address.village && !address.hamlet && !address.isolated_dwelling) ||
@@ -328,6 +444,7 @@ function normalizeNominatimPlace(record, searchTerm) {
     latitude,
     longitude,
     description: tags['description:en'] || tags.description || '',
+    address: [record.address?.house_number, record.address?.road, record.address?.village, record.address?.state].filter(Boolean).join(', '),
     website: tags.website || tags['contact:website'] || '',
     phone: tags.phone || tags['contact:phone'] || '',
     openingHours: tags.opening_hours || '',
@@ -338,6 +455,8 @@ function normalizeNominatimPlace(record, searchTerm) {
       natural: tags.natural || '',
       amenity: tags.amenity || '',
       craft: tags.craft || '',
+      shop: tags.shop || '',
+      landuse: tags.landuse || '',
     },
   };
 }
@@ -357,7 +476,7 @@ async function getNominatimDestinations({ category, latitude, longitude, radius,
   const byId = new Map();
   const errors = [];
   let successfulRequests = 0;
-  const viewbox = latitude === undefined ? '' : searchViewbox(latitude, longitude, radius);
+  const viewbox = latitude === undefined ? '76.7,19.5,84.8,12.5' : searchViewbox(latitude, longitude, radius);
 
   for (const term of terms) {
     const params = new URLSearchParams({
@@ -368,21 +487,25 @@ async function getNominatimDestinations({ category, latitude, longitude, radius,
       countrycodes: 'in',
       q: term,
     });
-    if (viewbox) {
-      params.set('viewbox', viewbox);
-      params.set('bounded', '1');
-    }
+    params.set('viewbox', viewbox);
+    params.set('bounded', '1');
 
     try {
+      const waitMs = retryWait('Nominatim');
+      if (waitMs) {
+        errors.push(`Nominatim retry is delayed for ${Math.ceil(waitMs / 1000)} seconds after an upstream failure.`);
+        break;
+      }
       const records = await fetchNominatimJson(`https://nominatim.openstreetmap.org/search?${params}`);
       successfulRequests += 1;
+      markProviderSuccess('Nominatim');
       for (const record of records) {
         const place = normalizeNominatimPlace(record, term);
         if (place && !byId.has(place.id)) byId.set(place.id, place);
       }
     } catch (error) {
       errors.push(`${term}: ${error.message}`);
-      console.warn(`Nominatim destination search failed for "${term}":`, error.message);
+      markProviderFailure('Nominatim', error);
     }
   }
 
@@ -429,6 +552,7 @@ export async function getRuralDestinations({
   longitude,
   radius = 25000,
   limit = 15,
+  forceRefresh = false,
 } = {}) {
   const safeCategory = Object.hasOwn(categories, category) ? category : 'all';
   if (!Object.hasOwn(categories, category)) {
@@ -452,9 +576,12 @@ export async function getRuralDestinations({
 
   const cacheKey = JSON.stringify({ category: safeCategory, latitude, longitude, radius, limit });
   const cached = getCached(cacheKey);
-  if (cached) return cached;
+  if (shouldServeCachedResult(Boolean(cached), forceRefresh)) return { ...cached, fromCache: true };
 
-  const overpassUrl = process.env.OVERPASS_URL?.trim() || 'https://overpass-api.de/api/interpreter';
+  const overpassUrls = [...new Set([
+    process.env.OVERPASS_URL?.trim() || 'https://overpass-api.de/api/interpreter',
+    process.env.OVERPASS_FALLBACK_URL?.trim() || 'https://overpass.private.coffee/api/interpreter',
+  ].filter(Boolean))];
   const query = buildOverpassQuery({
     category: safeCategory,
     latitude: hasLatitude ? latitude : undefined,
@@ -467,25 +594,43 @@ export async function getRuralDestinations({
   let places = [];
   let nominatimAvailable = false;
   let nominatimAttempted = false;
-  try {
-    const overpassResponse = await fetchJson(overpassUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ data: query }),
-      timeoutMs: OVERPASS_TIMEOUT_MS,
-    });
-    places = (overpassResponse.elements || [])
-      .map(normalizeOsmElement)
-      .filter(Boolean)
-      .slice(0, limit);
-  } catch (error) {
+  const overpassWait = retryWait('Overpass');
+  if (overpassWait) {
     overpassAvailable = false;
-    overpassError = error.message;
-    console.warn('Overpass destination search failed; trying Nominatim:', error.message);
+    overpassError = `Retry delayed for ${Math.ceil(overpassWait / 1000)} seconds after an upstream failure.`;
+  } else {
+    const errors = [];
+    let lastError;
+    for (const overpassUrl of overpassUrls) {
+      try {
+        const overpassResponse = await fetchJson(overpassUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ data: query }),
+          timeoutMs: OVERPASS_TIMEOUT_MS,
+        });
+        places = (overpassResponse.elements || [])
+          .map(normalizeOsmElement)
+          .filter(Boolean)
+          .slice(0, limit);
+        markProviderSuccess('Overpass');
+        break;
+      } catch (error) {
+        errors.push(error.message);
+        lastError = error;
+      }
+    }
+    if (errors.length === overpassUrls.length) {
+      overpassAvailable = false;
+      overpassError = errors.join('; ');
+      markProviderFailure('Overpass', lastError, Boolean(getStaleCached(cacheKey)));
+    }
   }
 
   let nominatimErrors = [];
-  if (places.length === 0) {
+  // Public Nominatim disallows systematic downloads of all POIs in a region.
+  // Use it only when a user explicitly requests a bounded nearby search.
+  if (places.length === 0 && hasLatitude) {
     const fallback = await getNominatimDestinations({
       category: safeCategory,
       latitude: hasLatitude ? latitude : undefined,
@@ -499,15 +644,35 @@ export async function getRuralDestinations({
     nominatimAttempted = true;
   }
 
+  const liveOpenStreetMapAvailable = overpassAvailable || nominatimAvailable;
+  if (!liveOpenStreetMapAvailable && places.length === 0) {
+    const stale = getStaleCached(cacheKey);
+    if (stale?.destinations?.length) {
+      const staleMessage = 'OpenStreetMap is temporarily unavailable; showing previously cached places.';
+      return {
+        ...stale,
+        fromCache: true,
+        destinations: stale.destinations.map((place) => ({ ...place, cached: true })),
+        services: {
+          ...stale.services,
+          openStreetMap: { available: false, cached: true, message: staleMessage, overpass: { available: false }, nominatim: { available: false } },
+        },
+      };
+    }
+  }
+
   const wikimediaStatus = { available: places.length > 0, skipped: places.length === 0 };
   const wikimediaTargets = places.slice(0, Math.min(places.length, 4));
-  const photos = await mapConcurrent(wikimediaTargets, 4, async (place) => {
+  const photos = await mapConcurrent(wikimediaTargets, 1, async (place) => {
+    if (retryWait('Wikimedia Commons')) return null;
     try {
-      return await getWikimediaPhoto(place);
+      const photo = await getWikimediaPhoto(place);
+      if (photo) markProviderSuccess('Wikimedia Commons');
+      return photo;
     } catch (error) {
       wikimediaStatus.available = false;
       wikimediaStatus.error = error.message;
-      console.warn(`Wikimedia Commons image lookup failed for "${place.name}":`, error.message);
+      markProviderFailure('Wikimedia Commons', error, Boolean(getStaleCached(cacheKey)));
       return null;
     }
   });
@@ -518,6 +683,7 @@ export async function getRuralDestinations({
       place.photo = null;
       return;
     }
+    wikimediaStatus.available = true;
     seenMediaPages.add(photo.mediaPageUrl);
     place.photo = photo;
   });
@@ -528,11 +694,12 @@ export async function getRuralDestinations({
   let wikidataStatus;
   try {
     const { facts, available } = await getWikidataFacts(places);
+    markProviderSuccess('Wikidata');
     wikidataStatus = { available };
     for (const place of places) place.wikidata = facts.get(place.wikidataId) || null;
   } catch (error) {
     wikidataStatus = { available: false, error: error.message };
-    console.warn('Wikidata fact lookup failed:', error.message);
+    markProviderFailure('Wikidata', error, Boolean(getStaleCached(cacheKey)));
     for (const place of places) place.wikidata = null;
   }
 
@@ -541,7 +708,7 @@ export async function getRuralDestinations({
     total: places.length,
     services: {
       openStreetMap: {
-        available: overpassAvailable || nominatimAvailable,
+      available: liveOpenStreetMapAvailable,
         provider: places.some((place) => place.sourceProvider === 'Nominatim') ? 'Nominatim' : 'Overpass',
         message: overpassError
           ? nominatimAvailable
@@ -569,7 +736,7 @@ export async function getRuralDestinations({
       wikimediaCommons: 'Image creator and licence are shown on each image card.',
     },
   };
-  setCached(cacheKey, result);
+  if (liveOpenStreetMapAvailable) setCached(cacheKey, result);
   return result;
 }
 

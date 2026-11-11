@@ -1,4 +1,3 @@
-import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import esbuild from 'esbuild';
 import path from 'path';
@@ -18,10 +17,7 @@ const jsxInJsPlugin = () => ({
         sourcefile: id,
         jsx: 'automatic',
       });
-      return {
-        code: result.code,
-        map: result.map,
-      };
+      return { code: result.code, map: result.map };
     }
   },
 });
@@ -33,7 +29,6 @@ export default defineConfig(() => {
     plugins: [
       jsxInJsPlugin(),
       react(),
-      tailwindcss(),
     ],
     optimizeDeps: {
       noDiscovery: true,

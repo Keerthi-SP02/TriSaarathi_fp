@@ -1,89 +1,109 @@
 import React from 'react';
-import { ArrowRight, Sparkles, HeartHandshake, Trees, UtensilsCrossed } from 'lucide-react';
+import { ArrowDown, Compass, Route, Store, UsersRound } from 'lucide-react';
+import StorySection from '../components/about/StorySection.jsx';
+import storySections from './aboutStory.js';
+import '../styles/about-story.css';
+
+const platformFeatures = [
+  {
+    title: 'Plan trips as a group',
+    description: 'Create a shared trip and keep travel plans and decisions together.',
+    icon: UsersRound,
+  },
+  {
+    title: 'Organize routes and budgets',
+    description: 'Arrange destinations, routes, stays, and group expenses in one itinerary.',
+    icon: Route,
+  },
+  {
+    title: 'Discover local experiences',
+    description: 'Find village stays, local food, crafts, landscapes, and cultural experiences.',
+    icon: Compass,
+  },
+  {
+    title: 'Connect with rural businesses',
+    description: 'Explore local hosts, makers, and guides and help their work reach more travellers.',
+    icon: Store,
+  },
+];
 
 export default function About({ onNavigate }) {
-  const pillars = [
-    {
-      title: 'Villages & Homestays',
-      desc: 'Stay with welcoming rural families, support grassroots communities, and wake up to birdsong.',
-      accent: 'var(--light-green)',
-    },
-    {
-      title: 'Traditions & Crafts',
-      desc: 'Learn ancient pottery, handloom weaving, and tribal arts directly from master rural artisans.',
-      accent: 'var(--light-brown)',
-    },
-    {
-      title: 'Local Food & Flavours',
-      desc: 'Savor organic farm-to-table meals, seasonal regional recipes, and hearth-cooked heritage dishes.',
-      accent: 'var(--peach)',
-    },
-    {
-      title: 'People & Nature',
-      desc: 'Connect with barefoot naturalists, oral historians, and gentle trails untouched by mass tourism.',
-      accent: 'var(--peach-pink)',
-    },
-  ];
+  const storyRows = Array.from(
+    { length: Math.ceil(storySections.length / 5) },
+    (_, rowIndex) => storySections.slice(rowIndex * 5, rowIndex * 5 + 5),
+  );
 
   return (
-    <div className="about-viewport">
-      {/* Left Column: Narrative */}
-      <div className="about-content">
-        <span className="about-kicker">ABOUT TRISAARATHI</span>
-        <h1 className="about-heading">Travel Beyond the Usual</h1>
-        <p className="about-lead">
-          TriSaarathi brings collaborative trip planning and rural tourism discovery together in one place. We guide conscious travellers beyond tourist traps into living landscapes.
+    <div className="about-story-page">
+      <header className="story-intro">
+        <p className="story-intro__eyebrow">THE STORY BEHIND TRISAARATHI</p>
+        <h1>Every Road Has a Story</h1>
+        <p className="story-intro__lead">
+          A wrong turn led Arjun to the people and experiences that inspired TriSaarathi.
         </p>
+        <a className="story-continue" href="#story-start">
+          Continue the journey <ArrowDown size={16} aria-hidden="true" />
+        </a>
+      </header>
 
-        {/* 4 Feature blocks highlighting rural elements */}
-        <div className="about-pills-grid">
-          {pillars.map((pillar, idx) => (
+      <section className="story-road" id="story-start" aria-label="How TriSaarathi began">
+        {storyRows.map((row, rowIndex) => {
+          const firstIndex = rowIndex * 5;
+          const isReverse = rowIndex % 2 === 1;
+
+          return (
             <div
-              key={idx}
-              className="about-feature-box"
-              style={{ '--feature-accent': pillar.accent }}
+              className={`story-road__row${isReverse ? ' story-road__row--reverse' : ''}`}
+              key={firstIndex}
             >
-              <h3 className="about-feature-title">{pillar.title}</h3>
-              <p className="about-feature-desc">{pillar.desc}</p>
+              {row.map((section) => (
+                <StorySection
+                  key={section.label}
+                  section={section}
+                  index={storySections.indexOf(section)}
+                />
+              ))}
+              {rowIndex === 0 && storyRows.length > 1 && (
+                <svg
+                  className="story-road__turn"
+                  viewBox="0 0 28 52"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <path
+                    className="story-road__turn-edge"
+                    d="M0 0 H18 C22 0 24 2 24 8 V44 C24 50 22 52 18 52 H0"
+                  />
+                  <path
+                    className="story-road__turn-center"
+                    d="M0 0 H18 C22 0 24 2 24 8 V44 C24 50 22 52 18 52 H0"
+                  />
+                  <path
+                    className="story-road__turn-marking"
+                    d="M0 0 H18 C22 0 24 2 24 8 V44 C24 50 22 52 18 52 H0"
+                  />
+                </svg>
+              )}
             </div>
+          );
+        })}
+      </section>
+
+      <section className="story-purpose" aria-labelledby="story-purpose-title">
+        <h2 id="story-purpose-title">Plan together. Discover rural life.</h2>
+        <div className="story-purpose__grid">
+          {platformFeatures.map(({ title, description, icon: Icon }) => (
+            <article className="story-purpose__card" key={title}>
+              <span className="story-purpose__icon" aria-hidden="true">
+                <Icon size={20} strokeWidth={1.8} />
+              </span>
+              <h3>{title}</h3>
+              <p>{description}</p>
+            </article>
           ))}
         </div>
+      </section>
 
-        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '0.25rem' }}>
-          <button
-            type="button"
-            onClick={() => onNavigate('home')}
-            className="btn-primary-journey"
-          >
-            <span>Explore The Journey</span>
-            <ArrowRight size={14} />
-          </button>
-          <button
-            type="button"
-            onClick={() => onNavigate('how-it-works')}
-            className="btn-nav-login"
-            style={{ padding: '0.55rem 1.15rem' }}
-          >
-            How It Works
-          </button>
-        </div>
-      </div>
-
-      {/* Right Column: Authentic Rural Photography with Quote */}
-      <div className="about-image-card">
-        <img
-          src="https://images.unsplash.com/photo-1582510003544-4d00b7f74220?auto=format&fit=crop&w=1000&q=80"
-          alt="Traditional Indian village cottage with terracotta roof, warm courtyard and rural life"
-        />
-        <div className="about-quote-overlay">
-          <p className="about-quote-text">
-            “The real journey of discovery consists not in seeking new landscapes, but in having new eyes for the quiet roads.”
-          </p>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginTop: '0.25rem' }}>
-            TriSaarathi Rural Guardians · Across 14 Indian States
-          </span>
-        </div>
-      </div>
     </div>
   );
 }

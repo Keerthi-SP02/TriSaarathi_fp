@@ -44,10 +44,23 @@ const userSchema = new mongoose.Schema(
       maxlength: 2000,
       default: '',
     },
+    businessAvatarUrl: {
+      type: String,
+      trim: true,
+      maxlength: 2048,
+      default: '',
+    },
     businessPhone: {
       type: String,
       trim: true,
       maxlength: 30,
+      default: '',
+    },
+    businessPublicEmail: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      maxlength: 254,
       default: '',
     },
     businessWebsite: {
@@ -86,10 +99,14 @@ const userSchema = new mongoose.Schema(
     },
     businessApprovalStatus: {
       type: String,
-      enum: ['not-applicable', 'pending', 'approved', 'rejected'],
+      enum: ['not-applicable', 'pending', 'changes_requested', 'approved', 'rejected'],
       default() {
         return this.role === 'Business' ? 'pending' : 'not-applicable';
       },
+    },
+    businessApplication: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
     },
     isActive: {
       type: Boolean,

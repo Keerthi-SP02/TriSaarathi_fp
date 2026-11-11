@@ -2,5 +2,5 @@
   "name": "TriSaarathi - Rural Journeys & Collaborative Travel",
   "description": "Every Road Has a Story. Let Us Guide You Back to It. Collaborative trip planning and rural tourism discovery across authentic Indian villages, traditions, and landscapes.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": []
 }

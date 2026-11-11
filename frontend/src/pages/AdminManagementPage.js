@@ -1,19 +1,15 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, RefreshCw, ShieldCheck, UsersRound } from 'lucide-react';
 import { apiRequest } from '../lib/api.js';
+import CommunityFeed from '../components/community/CommunityFeed.jsx';
+import AdminDestinationsPage from './AdminDestinationsPage.js';
+import '../styles/trisaarathi-dashboard.css';
 
 const verificationTabs = ['Pending', 'Approved', 'Rejected', 'Suspended'];
 
-function formatDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString();
-}
-
 function EmptyFeaturePage({ page }) {
   const descriptions = {
-    'Rural Business Posts': 'Post moderation is not connected to an admin review workflow yet. Business posts are persisted in the existing service.',
-    'Destinations & Experiences': 'Destination and experience management is not available because these records do not yet have database models.',
+    'Rural Business Posts': 'Review the latest posts published by approved rural businesses.',
     'Reviews & Reports': 'Reviews and content reports are not connected to persisted data services yet.',
     Notifications: 'There are no persisted administrator notifications in the current platform data model.',
     'Settings': 'There are no additional administrator preferences configured for this platform yet.',
@@ -35,6 +31,13 @@ export default function AdminManagementPage({ page, adminUser, options, onNaviga
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const [businessPosts, setBusinessPosts] = useState([]);
+  const [businessPostsPage, setBusinessPostsPage] = useState(1);
+  const [businessPostsTotal, setBusinessPostsTotal] = useState(0);
+  const [businessPostsLoading, setBusinessPostsLoading] = useState(false);
+  const [businessPostsError, setBusinessPostsError] = useState('');
+  const [businessPostsCategory, setBusinessPostsCategory] = useState('all');
+  const [businessPostsNotice, setBusinessPostsNotice] = useState('');
 
   const loadUsers = useCallback(async () => {
     setIsLoading(true);
@@ -71,6 +74,21 @@ export default function AdminManagementPage({ page, adminUser, options, onNaviga
     }
   }, []);
 
+  const loadBusinessPosts = useCallback(async ({ page = 1, append = false } = {}) => {
+    setBusinessPostsLoading(true);
+    setBusinessPostsError('');
+    try {
+      const result = await apiRequest(`/community/posts?scope=feed&page=${page}&limit=20&type=business`);
+      setBusinessPosts((current) => append ? [...current, ...result.posts] : result.posts);
+      setBusinessPostsPage(result.page);
+      setBusinessPostsTotal(result.total);
+    } catch (requestError) {
+      setBusinessPostsError(requestError.message);
+    } finally {
+      setBusinessPostsLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (options.status) setStatus(options.status[0].toUpperCase() + options.status.slice(1));
     setSearch('');
@@ -80,7 +98,48 @@ export default function AdminManagementPage({ page, adminUser, options, onNaviga
   useEffect(() => {
     if (page === 'User Management') loadUsers();
     if (page === 'Business Verification') loadBusinesses();
-  }, [page, loadBusinesses, loadUsers]);
+    if (page === 'Rural Business Posts') loadBusinessPosts();
+  }, [page, loadBusinesses, loadUsers, loadBusinessPosts]);
+
+  const businessPostAction = async (post, action, body) => {
+    try {
+      return await apiRequest(`/community/posts/${post.source}/${post.id}/${action}`, {
+        method: 'POST',
+        ...(body ? { body: JSON.stringify(body) } : {}),
+      });
+    } catch (requestError) {
+      setBusinessPostsError(requestError.message);
+      return null;
+    }
+  };
+  const businessPostActions = {
+    onLike: async (post) => {
+      const result = await businessPostAction(post, 'like');
+      if (result) setBusinessPosts((current) => current.map((item) => item.id === post.id ? { ...item, likedByMe: result.active, likeCount: result.likeCount } : item));
+    },
+    onSave: async (post) => {
+      const result = await businessPostAction(post, 'save');
+      if (result) setBusinessPosts((current) => current.map((item) => item.id === post.id ? { ...item, savedByMe: result.savedByMe } : item));
+    },
+    onComment: async (post, content) => {
+      const result = await businessPostAction(post, 'comments', { content });
+      if (!result) return false;
+      setBusinessPosts((current) => current.map((item) => item.id === post.id ? { ...item, comments: [...(item.comments || []), result.comment] } : item));
+      return true;
+    },
+    onShare: async (post) => {
+      const text = `${post.author?.name || 'Rural business'} on TriSaarathi: ${post.content}`;
+      try {
+        if (navigator.share) await navigator.share({ title: 'TriSaarathi', text, url: window.location.href });
+        else {
+          await navigator.clipboard.writeText(`${text} ${window.location.href}`);
+          setBusinessPostsNotice('Post link copied to clipboard.');
+        }
+      } catch (shareError) {
+        if (shareError.name !== 'AbortError') setBusinessPostsError('Could not share this post.');
+      }
+    },
+  };
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -121,6 +180,30 @@ export default function AdminManagementPage({ page, adminUser, options, onNaviga
       setError(requestError.message);
     }
   };
+
+  if (page === 'Rural Business Posts') return <section className="admin-management-page admin-business-posts">
+    <header className="admin-management-heading"><p>ADMINISTRATION</p><h1>Rural Business Posts</h1><span>Latest posts shared by approved rural businesses.</span></header>
+    {businessPostsNotice && <p className="admin-management-message success" role="status">{businessPostsNotice}</p>}
+    <div className="admin-management-toolbar">
+      <span>{businessPostsTotal} business posts</span>
+      <button type="button" className="admin-management-secondary" onClick={() => { setBusinessPostsNotice(''); loadBusinessPosts(); }} disabled={businessPostsLoading}><RefreshCw size={15} aria-hidden="true" />Refresh posts</button>
+    </div>
+    <CommunityFeed
+      posts={businessPosts}
+      category={businessPostsCategory}
+      onCategory={setBusinessPostsCategory}
+      loading={businessPostsLoading}
+      error={businessPostsError}
+      onRetry={() => loadBusinessPosts()}
+      actions={businessPostActions}
+      hideBusinessAction
+      emptyTitle="No rural business posts yet"
+      emptyMessage="New posts from approved businesses will appear here."
+    />
+    {businessPosts.length < businessPostsTotal && <button type="button" className="admin-management-secondary" onClick={() => loadBusinessPosts({ page: businessPostsPage + 1, append: true })} disabled={businessPostsLoading}>{businessPostsLoading ? 'Loading…' : 'Load more posts'}</button>}
+  </section>;
+
+  if (page === 'Destinations & Experiences') return <AdminDestinationsPage />;
 
   if (!['User Management', 'Business Verification', 'My Profile'].includes(page)) {
     return <EmptyFeaturePage page={page} />;
@@ -211,7 +294,7 @@ export default function AdminManagementPage({ page, adminUser, options, onNaviga
                       <tr key={user._id}>
                         <td>{isVerification ? user.businessName || user.name : user.name}</td>
                         <td>{isVerification ? `${user.name} · ${user.email}` : user.email}</td>
-                        {isVerification && <td>{user.region || '—'}</td>}
+                        {isVerification && <td>{user.region || '—'}{user.businessApplication && <details className="admin-application-details"><summary>Application details</summary><p><strong>Type:</strong> {user.businessApplication.category || '—'}</p><p><strong>Description:</strong> {user.businessApplication.description || '—'}</p><p><strong>Address:</strong> {user.businessApplication.address || '—'}</p><p><strong>Phone:</strong> {user.businessApplication.phone || '—'}</p><p><strong>Services:</strong> {user.businessApplication.services || '—'}</p><p><strong>Website:</strong> {user.businessApplication.website || '—'}</p></details>}</td>}
                         {!isVerification && <td>{user.role}</td>}
                         <td>{isVerification ? businessStatus : user.isActive === false ? 'Disabled' : 'Active'}</td>
                         <td>

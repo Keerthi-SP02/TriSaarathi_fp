@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Mail, Phone, MapPin, Send, CheckCircle2 } from 'lucide-react';
 import { apiRequest } from '../lib/api.js';
+import Button from '../components/Button.js';
 
 export default function Contact({ onNavigate }) {
   const [formData, setFormData] = useState({
@@ -33,15 +34,7 @@ export default function Contact({ onNavigate }) {
     <div className="contact-viewport">
       {/* Left side: Information and Rural Travel Desk */}
       <div className="contact-info">
-        <span
-          style={{
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--peach)',
-          }}
-        >
+        <span className="contact-kicker">
           COMMUNITY & HOST CONNECTIONS
         </span>
         <h1 className="contact-title">Have a Journey in Mind?</h1>
@@ -55,7 +48,7 @@ export default function Contact({ onNavigate }) {
               <Mail size={16} />
             </div>
             <div>
-              <strong style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <strong className="contact-meta-label">
                 Direct Rural Support Desk
               </strong>
               <span>journeys@trisaarathi.org</span>
@@ -67,7 +60,7 @@ export default function Contact({ onNavigate }) {
               <MapPin size={16} />
             </div>
             <div>
-              <strong style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <strong className="contact-meta-label">
                 Field Coordinators Hub
               </strong>
               <span>Rural Tourism Collective · Across Himachal, Uttarakhand, Karnataka & Kerala</span>
@@ -79,7 +72,7 @@ export default function Contact({ onNavigate }) {
               <Phone size={16} />
             </div>
             <div>
-              <strong style={{ display: 'block', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <strong className="contact-meta-label">
                 Community Toll-free
               </strong>
               <span>+91 1800 244 8742 (9 AM - 6 PM IST)</span>
@@ -91,31 +84,30 @@ export default function Contact({ onNavigate }) {
       {/* Right side: Contact Form */}
       <div className="contact-form-card">
         {submitted ? (
-          <div style={{ textAlign: 'center', padding: '2rem 1rem' }}>
+          <div className="contact-success">
             <CheckCircle2
               size={48}
-              style={{ color: 'var(--light-green)', margin: '0 auto 0.75rem auto' }}
+              className="contact-success-icon"
+              aria-hidden="true"
             />
-            <h3 style={{ fontSize: '1.2rem', fontFamily: 'var(--font-serif)', marginBottom: '0.4rem' }}>
+            <h3 className="contact-success-title">
               Message Received, Fellow Traveller!
             </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
+            <p className="contact-success-copy">
               Our rural trail coordinator will reach out to <strong>{formData.email}</strong> within 24 hours.
             </p>
-            <button
-              type="button"
+            <Button
               onClick={() => {
                 setSubmitted(false);
                 setFormData({ name: '', email: '', message: '' });
               }}
-              className="btn-primary-journey"
-              style={{ margin: '0 auto' }}
+              variant="primary"
             >
               Send Another Note
-            </button>
+            </Button>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+          <form onSubmit={handleSubmit} className="contact-form">
             <div className="form-group">
               <label htmlFor="contact-name" className="form-label">
                 Your Full Name
@@ -162,14 +154,16 @@ export default function Contact({ onNavigate }) {
               />
             </div>
 
-            {error && <p role="alert" style={{ color: 'var(--peach)', fontSize: '0.82rem' }}>{error}</p>}
+            {error && <p className="contact-form-error" role="alert">{error}</p>}
 
-            <button type="submit" className="btn-send-message" disabled={isSubmitting}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span>{isSubmitting ? 'Sending...' : 'Send Message'}</span>
-                <Send size={14} />
-              </span>
-            </button>
+            <Button
+              type="submit"
+              className="btn-send-message"
+              disabled={isSubmitting}
+              icon={<Send size={14} />}
+            >
+              {isSubmitting ? 'Sending...' : 'Send Message'}
+            </Button>
           </form>
         )}
       </div>

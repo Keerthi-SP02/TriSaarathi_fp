@@ -1,118 +1,156 @@
 import React from 'react';
 import {
-  Compass,
-  UserPlus,
-  Map,
-  Coins,
-  TentTree,
   ArrowRight,
+  BadgeCheck,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  Compass,
+  Heart,
+  ImagePlus,
+  MapPin,
+  MessageCircle,
+  UserRoundPlus,
+  UsersRound,
+  Wallet,
 } from 'lucide-react';
+import Button from '../components/Button.js';
+import '../styles/how-it-works.css';
+
+const journeys = [
+  {
+    id: 'travellers',
+    eyebrow: 'FOR TRAVELLERS',
+    title: 'Find your next rural experience',
+    description: 'Plan, organize, and share a journey with friends while discovering rural places.',
+    steps: [
+      {
+        title: 'Create a traveller account',
+        description: 'Register to open your traveller dashboard.',
+        Icon: UserRoundPlus,
+      },
+      {
+        title: 'Plan a trip',
+        description: 'Start a trip and organize its dates and travel details.',
+        Icon: Compass,
+      },
+      {
+        title: 'Discover destinations',
+        description: 'Browse places and find local stays, food, crafts, and experiences.',
+        Icon: MapPin,
+      },
+      {
+        title: 'Add and split your budget',
+        description: 'Keep trip costs and shared expenses organized.',
+        Icon: Wallet,
+      },
+      {
+        title: 'Plan with your friends',
+        description: 'Invite friends and coordinate your plans together.',
+        Icon: UsersRound,
+      },
+      {
+        title: 'Manage your trips',
+        description: 'Keep track of your planned and upcoming journeys.',
+        Icon: CalendarDays,
+      },
+      {
+        title: 'Save your memories',
+        description: 'Keep photos and moments from your journeys together.',
+        Icon: Heart,
+      },
+      {
+        title: 'Create travel stories',
+        description: 'Turn your itinerary and trip memories into a story when available.',
+        Icon: BookOpen,
+      },
+    ],
+  },
+  {
+    id: 'businesses',
+    eyebrow: 'FOR RURAL BUSINESSES',
+    title: 'Share your work with more travellers',
+    description: 'Create a presence for your business and connect with visitors interested in your community.',
+    steps: [
+      {
+        title: 'Apply to join',
+        description: 'Register as a business and submit your details for review.',
+        Icon: UserRoundPlus,
+      },
+      {
+        title: 'Set up your profile',
+        description: 'Add your business information, location, and the experiences you offer.',
+        Icon: Building2,
+      },
+      {
+        title: 'Share a post',
+        description: 'Publish updates, photos, and videos about your products or local experiences.',
+        Icon: ImagePlus,
+      },
+      {
+        title: 'Connect with visitors',
+        description: 'Manage traveller inquiries and keep up with feedback on your business.',
+        Icon: BadgeCheck,
+      },
+    ],
+  },
+];
+
+function JourneyRoad({ journey }) {
+  return (
+    <section className={`how-journey how-journey--${journey.id}`} aria-labelledby={`${journey.id}-title`}>
+      <header className="how-journey__header">
+        <p className="how-journey__eyebrow">{journey.eyebrow}</p>
+        <h2 id={`${journey.id}-title`}>{journey.title}</h2>
+        <p>{journey.description}</p>
+      </header>
+
+      <ol className="how-journey__steps">
+        {journey.steps.map(({ title, description, Icon }, index) => (
+          <li
+            className={`how-step${journey.id === 'travellers' ? ' how-step--traveller' : ''}`}
+            key={title}
+          >
+            <span className="how-step__icon" aria-hidden="true">
+              <Icon size={20} strokeWidth={1.8} />
+            </span>
+            <div className="how-step__heading">
+              <span className="how-step__number">STEP {String(index + 1).padStart(2, '0')}</span>
+              <h3>{title}</h3>
+            </div>
+            <p>{description}</p>
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
 
 export default function HowItWorks({ onNavigate }) {
-  const steps = [
-    {
-      num: '01',
-      name: 'Create Your Trip',
-      desc: 'Set your dates, travel pace, and choose whether you want mountain, river valley, or agricultural trails.',
-      icon: <Compass size={18} />,
-      accent: 'var(--light-blue)',
-      soft: 'var(--light-blue-soft)',
-    },
-    {
-      num: '02',
-      name: 'Invite Your People',
-      desc: 'Bring friends, family, or fellow explorers into a shared planning room with real-time consensus.',
-      icon: <UserPlus size={18} />,
-      accent: 'var(--light-green)',
-      soft: 'var(--light-green-soft)',
-    },
-    {
-      num: '03',
-      name: 'Plan Destinations',
-      desc: 'Pin heritage routes, quiet village homestays, and scenic pit stops along your day-wise itinerary.',
-      icon: <Map size={18} />,
-      accent: 'var(--peach)',
-      soft: 'var(--peach-soft)',
-    },
-    {
-      num: '04',
-      name: 'Manage Budget',
-      desc: 'Keep transport, food, and homestay costs clear with transparent split-expense tracking for all.',
-      icon: <Coins size={18} />,
-      accent: 'var(--light-brown)',
-      soft: 'var(--light-brown-soft)',
-    },
-    {
-      num: '05',
-      name: 'Discover Rural Experiences',
-      desc: 'Unlock authentic pottery workshops, harvest lunches, and oral heritage guided by village elders.',
-      icon: <TentTree size={18} />,
-      accent: 'var(--peach-pink)',
-      soft: 'var(--peach-pink-soft)',
-    },
-  ];
-
   return (
-    <div className="how-viewport">
-      <div className="how-header">
-        <span
-          style={{
-            fontSize: '0.72rem',
-            fontWeight: 700,
-            letterSpacing: '0.14em',
-            textTransform: 'uppercase',
-            color: 'var(--light-blue)',
-            display: 'block',
-            marginBottom: '0.2rem',
-          }}
-        >
-          FIVE STEPS TO MINDFUL TRAVEL
-        </span>
-        <h1 className="how-title">How TriSaarathi Works</h1>
-        <p className="how-subtitle">
-          From the first idea to village doorsteps, our collaborative workflow keeps group travel effortless, grounded, and rich with authentic memories.
-        </p>
+    <main className="how-it-works">
+      <header className="how-it-works__intro">
+        <p className="how-it-works__eyebrow">YOUR JOURNEY STARTS HERE</p>
+        <h1>How TriSaarathi Works</h1>
+        <p>Whether you are planning a visit or welcoming one, there is a simple way to get started.</p>
+      </header>
+
+      <div className="how-it-works__journeys">
+        {journeys.map((journey) => <JourneyRoad key={journey.id} journey={journey} />)}
       </div>
 
-      <div className="steps-container">
-        {steps.map((step) => (
-          <div
-            key={step.num}
-            className="step-card"
-            style={{
-              '--step-accent': step.accent,
-              '--step-soft': step.soft,
-            }}
-          >
-            <div className="step-number">
-              <span>{step.num}</span>
-              <div className="step-icon-wrap" aria-hidden="true">
-                {step.icon}
-              </div>
-            </div>
-            <h3 className="step-name">{step.name}</h3>
-            <p className="step-desc">{step.desc}</p>
-          </div>
-        ))}
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'center', gap: '1rem', marginTop: '0.5rem' }}>
-        <button
-          type="button"
+      <footer className="how-it-works__actions">
+        <Button
           onClick={() => onNavigate('register')}
-          className="btn-primary-journey"
+          variant="primary"
+          icon={<ArrowRight size={14} />}
         >
-          <span>Start Your First Trip</span>
-          <ArrowRight size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('home')}
-          className="btn-nav-login"
-        >
+          Get Started
+        </Button>
+        <button type="button" onClick={() => onNavigate('home')} className="btn-nav-login">
           Back to Overview
         </button>
-      </div>
-    </div>
+      </footer>
+    </main>
   );
 }
